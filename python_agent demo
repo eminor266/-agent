@@ -1,0 +1,148 @@
+import os
+import json
+from dotenv import load_dotenv
+import streamlit as st
+from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
+from langgraph.graph import StateGraph, START, END
+from typing import TypedDict
+
+# ==========================
+# 1. 页面配置
+# ==========================
+st.set_page_config(page_title="简易AI Agent平台", layout="wide")
+st.title("🤖 简易 AI Agent 平台")
+
+# ==========================
+# 2. 加载环境
+# ==========================
+load_dotenv()
+
+# ==========================
+# 3. 定义工具
+# ==========================
+@tool
+def calculator(expression: str) -> str:
+    """计算器：支持加减乘除、括号、乘方"""
+    try:
+       return str(eval(expression))
+    except:
+        return "计算错误"
+
+@tool
+def search(query: str) -> str:
+    """模拟联网搜索"""
+    return f"【搜索结果】关于 {query} 的相关信息..."
+
+tools = [calculator, search]
+
+# ==========================
+# 4. Agent 状态定义
+# ==========================
+class AgentState(TypedDict):
+    user_input: str
+    history: list
+    thought: str
+    tool_result: str
+    answer: str
+
+# ==========================
+# 5. 核心节点
+# ==========================
+def llm():
+    return ChatOpenAI(
+        api_key=st.session_state.get("api_key"),
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        model="qwen-turbo",
+        temperature=0.1
+    )
+
+def think_node(state: AgentState):
+    prompt = f"""
+用户问题：{state['user_input']}
+历史：{state['history']}
+请思考：是否需要工具？需要什么工具？
+"""
+    thought = llm().invoke(prompt).content
+    return {"thought": thought}
+
+def tool_node(state: AgentState):
+    prompt = f"问题：{state['user_input']}\n思考：{state['thought']}\n需要调用工具吗？需要就输出工具名和参数，否则输出无。"
+    res = llm().bind_tools(tools).invoke(prompt)
+    if res.tool_calls:
+        tn = {t.name: t for t in tools}
+        tool_name = res.tool_calls[0]["name"]
+        args = res.tool_calls[0]["args"]
+        result = tn[tool_name].invoke(args)
+        return {"tool_result": result}
+    return {"tool_result": "无工具调用"}
+
+def answer_node(state: AgentState):
+    prompt = f"""
+用户问题：{state['user_input']}
+思考：{state['thought']}
+工具结果：{state['tool_result']}
+请给出最终回答。
+"""
+    answer = llm().invoke(prompt).content
+    new_hist = state["history"] + [{"user": state["user_input"], "agent": answer}]
+    return {"answer": answer, "history": new_hist}
+
+# ==========================
+# 6. 构建流程图
+# ==========================
+def build_agent():
+    w = StateGraph(AgentState)
+    w.add_node("think", think_node)
+    w.add_node("tool", tool_node)
+    w.add_node("answer", answer_node)
+    w.add_edge(START, "think")
+    w.add_edge("think", "tool")
+    w.add_edge("tool", "answer")
+    w.add_edge("answer", END)
+    return w.compile()
+
+# ==========================
+# 7. 界面逻辑
+# ==========================
+tab1, tab2, tab3 = st.tabs(["💬 Agent对话", "🛠️ 工具管理", "⚙️ 设置"])
+
+with tab3:
+    st.subheader("API 设置")
+    api_key = st.text_input("通义千问 API Key", type="password")
+    if api_key:
+        st.session_state["api_key"] = api_key
+        st.success("已保存 API Key")
+
+with tab2:
+    st.subheader("可用工具")
+    st.info("📦 计算器：支持数学计算")
+    st.info("🔍 搜索：模拟联网查询")
+
+with tab1:
+    st.subheader("开始对话")
+    if "history" not in st.session_state:
+        st.session_state["history"] = []
+
+    user_input = st.text_input("输入你的任务：")
+    if st.button("运行 Agent") and user_input:
+        if not st.session_state.get("api_key"):
+            st.warning("请先在设置页填写 API Key")
+        else:
+            with st.spinner("Agent 思考中..."):
+                agent = build_agent()
+                res = agent.invoke({
+                    "user_input": user_input,
+                    "history": st.session_state["history"],
+                    "thought": "",
+                    "tool_result": "",
+                    "answer": ""
+                })
+                st.session_state["history"] = res["history"]
+
+    # 展示历史
+    for item in st.session_state["history"]:
+        with st.chat_message("user"):
+            st.write(item["user"])
+        with st.chat_message("assistant"):
+            st.write(item["agent"])
