@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>贪吃蛇</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>贪吃蛇</h1>
+      <div class="stats">
+        <span class="score">得分：<strong id="score">0</strong></span>
+        <span class="best">最高：<strong id="best">0</strong></span>
+      </div>
+    </header>
+    <div class="stage">
+      <canvas id="game" width="400" height="400" aria-label="贪吃蛇游戏画布"></canvas>
+      <div id="overlay" class="overlay hidden">
+        <div class="overlay-card">
+          <p id="overlay-title" class="overlay-title">游戏结束</p>
+          <p id="overlay-msg" class="overlay-msg">按空格或点击按钮再来一局</p>
+          <button type="button" id="overlay-restart" class="btn">再来一局</button>
+        </div>
+      </div>
+    </div>
+    <div class="hud">
+      <p class="hint">方向键或 WASD 移动 · 空格暂停</p>
+      <button type="button" id="restart" class="btn">重新开始</button>
+    </div>
+  </div>
+  <script src="game.js"></script>
+</body>
+</html>
